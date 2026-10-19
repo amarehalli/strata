@@ -38,5 +38,5 @@ strata = ["*.html"]
 
 [tool.pytest.ini_options]
 testpaths = ["."]
-python_files = ["*_test.py"]
+python_files = ["test_*.py"]
 timeout = 120
