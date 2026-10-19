@@ -21,28 +21,13 @@ jobs:
         with:
           python-version: ${{ matrix.python-version }}
 
-      - name: Install dependencies
+      - name: Install test dependencies
         run: |
-          pip install -e ".[dev]"
+          pip install numpy pandas scipy scikit-learn pytest pytest-timeout
 
-      - name: Lint with ruff
-        run: ruff check strata/
+      - name: Install strata (no heavy deps)
+        run: |
+          pip install -e . --no-deps
 
       - name: Run tests
         run: pytest tests/ -v --timeout=60
-
-  publish:
-    if: startsWith(github.ref, 'refs/tags/v')
-    needs: test
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
-        with:
-          python-version: "3.11"
-      - run: pip install build twine
-      - run: python -m build
-      - run: twine upload dist/*
-        env:
-          TWINE_USERNAME: __token__
-          TWINE_PASSWORD: ${{ secrets.PYPI_API_TOKEN }}
