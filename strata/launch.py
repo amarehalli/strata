@@ -47,7 +47,7 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
 import numpy as np
 
-from .canonical import PointSet
+from .io.loaders import PointSet
 from .io.aligner_export import build_aligner_csvs
 from .transform import apply_aligner_transform
 
