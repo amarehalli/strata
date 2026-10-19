@@ -1,0 +1,601 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Xenium × Visium aligner</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;600;700&family=Inter:wght@400;450;500&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --bg:#0d0f10; --surface:#15181a; --surface-2:#1b1f22; --text:#e9ebea;
+    --muted:#7f868b; --faint:#3a4045; --hair:#24292c;
+    --xen:#22d3d3; --vis:#e879e8; --accent:#66c2a5;
+    --sans:"Inter",system-ui,sans-serif; --disp:"Space Grotesk",system-ui,sans-serif;
+    --mono:"JetBrains Mono",ui-monospace,monospace;
+  }
+  *{box-sizing:border-box}
+  html,body{margin:0;height:100%}
+  body{background:var(--bg);color:var(--text);font-family:var(--sans);display:flex;flex-direction:column;height:100vh;overflow:hidden}
+  header{padding:12px 18px 0}
+  .eyebrow{font-family:var(--mono);font-size:10.5px;letter-spacing:.18em;text-transform:uppercase;color:var(--muted);margin:0 0 4px}
+  h1{font-family:var(--disp);font-weight:600;font-size:20px;letter-spacing:-.01em;margin:0}
+  h1 .cy{color:var(--xen)} h1 .mg{color:var(--vis)}
+  .bar{display:flex;flex-wrap:wrap;gap:8px;align-items:center;padding:10px 18px 4px}
+  .ctrls{display:flex;flex-wrap:wrap;gap:14px 18px;align-items:center;padding:6px 18px 12px}
+  button,label.btn,select{font-family:var(--sans);font-size:12.5px;color:var(--text);background:var(--surface);border:1px solid var(--hair);border-radius:8px;padding:6px 11px;cursor:pointer;transition:border-color .15s,background .15s}
+  button:hover,label.btn:hover,select:hover{border-color:var(--muted)}
+  button:disabled{opacity:.4;cursor:default}
+  button.primary{background:var(--accent);color:#0d0f10;font-weight:600;border-color:var(--accent)}
+  button.primary:hover{background:#7cd6b6}
+  button.sent{background:#2f6b57;color:#dffaf0;border-color:#2f6b57}
+  .seg{display:flex;gap:2px;background:var(--surface-2);padding:2px;border-radius:9px;border:1px solid var(--hair)}
+  .seg button{border:none;background:transparent;padding:5px 11px;border-radius:7px}
+  .seg button.on{background:var(--accent);color:#0d0f10;font-weight:600}
+  input[type=file]{display:none}
+  select{appearance:none}
+  .grp{display:flex;align-items:center;gap:7px}
+  .grp .tag{font-family:var(--mono);font-size:10.5px;letter-spacing:.1em;text-transform:uppercase;color:var(--muted)}
+  .grp .tag.x{color:var(--xen)} .grp .tag.v{color:var(--vis)}
+  input[type=range]{width:120px;accent-color:var(--accent);cursor:pointer}
+  .mini{font-family:var(--mono);font-size:11.5px;color:var(--muted);min-width:52px;text-align:right}
+  .fine{padding:4px 8px;font-family:var(--mono);font-size:13px;line-height:1}
+  .spacer{flex:1}
+  .stage{flex:1;margin:0 18px 8px;border:1px solid var(--hair);border-radius:12px;background:#000;position:relative;overflow:hidden}
+  canvas{display:block;width:100%;height:100%;cursor:move}
+  .stage.pan canvas{cursor:grab} .stage.lasso canvas{cursor:crosshair}
+  .empty{position:absolute;inset:0;display:grid;place-items:center;text-align:center;color:var(--muted);font-size:13.5px;padding:24px}
+  .empty b{color:var(--text)} .empty code{font-family:var(--mono);font-size:12px;background:var(--surface-2);padding:2px 6px;border-radius:5px;color:#cfd3d1}
+  footer{padding:0 18px 12px;font-family:var(--mono);font-size:11px;color:var(--faint);display:flex;gap:16px;flex-wrap:wrap}
+  footer b{color:var(--muted);font-weight:500}
+  #status{color:var(--accent)}
+  :focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+  /* ---- auto-align additions ---- */
+  #autoAlignBar{display:none;align-items:center;gap:8px;padding:4px 18px 4px;background:var(--surface-2);border-top:1px solid var(--hair)}
+  #autoAlignBar.visible{display:flex}
+  #aaProgressTrack{flex:1;max-width:260px;height:7px;background:#1a1f22;border-radius:4px;border:1px solid var(--hair);overflow:hidden}
+  #aaProgressFill{height:100%;width:0%;background:var(--accent);border-radius:4px;transition:width 0.25s ease}
+  #aaLabel{font-family:var(--mono);font-size:11px;color:var(--muted);white-space:nowrap;min-width:120px}
+  #aaStatus{font-family:var(--mono);font-size:11px;margin-left:4px}
+  #aaStatus.ok{color:#2ecc71} #aaStatus.err{color:#ff6666}
+</style>
+</head>
+<body>
+<header>
+  <p class="eyebrow">manual overlay · per-fragment alignment</p>
+  <h1><span class="cy">Xenium</span> × <span class="mg">Visium</span> aligner</h1>
+</header>
+
+<div class="bar">
+  <label class="btn">Load Xenium CSV<input type="file" id="fx" accept=".csv"></label>
+  <label class="btn">Load Visium CSV<input type="file" id="fv" accept=".csv"></label>
+  <div class="seg" id="modes">
+    <button data-mode="move" class="on">Move</button>
+    <button data-mode="lasso">Lasso fragment</button>
+    <button data-mode="pan">Pan view</button>
+  </div>
+  <button id="whole">Whole slide</button>
+  <button id="fit">Fit view</button>
+  <button id="reset">Reset all</button>
+  <div class="spacer"></div>
+  <button id="btnAutoAlign" title="Run FGW auto-alignment and watch it animate, then refine manually"
+    style="background:#1a4a2e;color:#c3f0d4;border-color:#2ecc71;font-weight:600">&#9654; Run Auto-Align</button>
+  <button id="sendkernel" class="primary" disabled>✓ Send transform to notebook</button>
+  <button id="dlcoords" disabled>Download aligned Visium</button>
+  <button id="dlxform" disabled>Transform (JSON)</button>
+</div>
+
+<!-- Auto-align progress bar (hidden until alignment starts) -->
+<div id="autoAlignBar">
+  <div id="aaProgressTrack"><div id="aaProgressFill"></div></div>
+  <span id="aaLabel">starting…</span>
+  <span id="aaStatus"></span>
+  <button id="aaRestore" style="display:none;padding:3px 8px;font-size:11px">Restore original</button>
+</div>
+
+<div class="ctrls">
+  <div class="grp"><span class="tag x">Xen</span><select id="chx"></select>
+    <input type="range" id="opx" min="0" max="100" value="100"></div>
+  <div class="grp"><span class="tag v">Vis</span><select id="chv"></select>
+    <input type="range" id="opv" min="0" max="100" value="100">
+    <button id="flipx" class="fine">flip X</button><button id="flipy" class="fine">flip Y</button></div>
+  <div class="grp"><span class="tag">rotate</span>
+    <button class="fine" id="rotm">−</button>
+    <input type="range" id="rot" min="-180" max="180" step="0.5" value="0">
+    <button class="fine" id="rotp">+</button><span class="mini" id="rotv">0°</span></div>
+  <div class="grp"><span class="tag">scale</span>
+    <button class="fine" id="scm">−</button>
+    <input type="range" id="sc" min="0.2" max="4" step="0.01" value="1">
+    <button class="fine" id="scp">+</button><span class="mini" id="scv">1.00×</span></div>
+</div>
+
+<div class="stage" id="stage">
+  <canvas id="cv"></canvas>
+  <div class="empty" id="empty">
+    <div>
+      <b>Waiting for data from the notebook…</b><br><br>
+      Color both by the same fiducial gene, align globally, then <b>Lasso fragment</b> to grab
+      a single core and seat it on its own. Cyan + magenta overlap glows white. When it looks
+      right, click <b>Send transform to notebook</b>.<br><br>
+      Or click <b>▶ Run Auto-Align</b> to let the FGW algorithm align automatically—watch
+      the Xenium cells slide into place, then refine manually.
+    </div>
+  </div>
+</div>
+
+<footer><span id="status">editing: whole slide</span><span id="foot"></span></footer>
+
+<script>
+const cv=document.getElementById("cv"), ctx=cv.getContext("2d"), stage=document.getElementById("stage");
+const XEN_CAP=60000;
+let X=null, V=null;
+let xf={flipX:1,flipY:1,thetaDeg:0,mul:1,tx:0,ty:0,sInit:1};   // global transform (all Visium)
+let groups={}, groupSeq=0, active=null;                        // per-fragment extra transforms
+let view={k:1,ox:0,oy:0}, mode="move";
+let dragging=false, panning=false, dragStart=null, path=[];
+
+function emptyLayer(){return {pts:[],channels:[],chMax:{},ch:null,opacity:1,centroid:[0,0],extent:1};}
+function resize(){const r=stage.getBoundingClientRect(),d=window.devicePixelRatio||1;cv.width=r.width*d;cv.height=r.height*d;ctx.setTransform(d,0,0,d,0,0);render();}
+window.addEventListener("resize",resize);
+
+function parseCSV(text){
+  const lines=text.trim().split(/\r?\n/), head=lines[0].split(",").map(s=>s.trim());
+  const xi=head.indexOf("x"), yi=head.indexOf("y");
+  const bi=head.indexOf("barcode")>=0?head.indexOf("barcode"):head.indexOf("cell_id");
+  if(xi<0||yi<0){alert("CSV needs x and y columns.");return null;}
+  const DEPTH=["total_counts","n_counts","total_umi","library_size"];
+  const di=head.findIndex(h=>DEPTH.includes(h)); const normDepth=di>=0;
+  const vc=head.map((h,i)=>({h,i})).filter(c=>c.i!==xi&&c.i!==yi&&c.i!==bi&&c.i!==di&&c.h!=="");
+  const pts=[];
+  for(let li=1;li<lines.length;li++){const f=lines[li].split(",");if(f.length<head.length)continue;
+    const tot=normDepth?(parseFloat(f[di])||0):0;
+    const vals={};vc.forEach(c=>{let v=parseFloat(f[c.i])||0; if(normDepth&&tot>0) v=Math.log1p(1e4*v/tot); vals[c.h]=v;});
+    pts.push({barcode:bi>=0?f[bi].trim():String(li),x:+f[xi],y:+f[yi],vals,grp:0});}
+  const chMax={};vc.forEach(c=>{const a=pts.map(p=>p.vals[c.h]).filter(v=>v>0).sort((u,w)=>u-w);chMax[c.h]=a.length?(a[Math.floor(a.length*0.995)]||a[a.length-1]):1;});
+  return {pts,channels:vc.map(c=>c.h),chMax};
+}
+function stats(pts){const xs=pts.map(p=>p.x),ys=pts.map(p=>p.y);
+  return {centroid:[xs.reduce((a,b)=>a+b,0)/xs.length, ys.reduce((a,b)=>a+b,0)/ys.length],
+          extent:Math.max(Math.max(...xs)-Math.min(...xs),Math.max(...ys)-Math.min(...ys))||1};}
+function fillSel(sel,layer){sel.innerHTML="<option value='__u'>uniform</option>"+layer.channels.map(c=>`<option>${c}</option>`).join("");layer.ch=layer.channels[0]||"__u";sel.value=layer.ch;}
+
+function loadXen(t){const p=parseCSV(t);if(!p)return;X=emptyLayer();let pts=p.pts;
+  if(pts.length>XEN_CAP){const st=pts.length/XEN_CAP,s=[];for(let i=0;i<pts.length;i+=st)s.push(pts[Math.floor(i)]);pts=s;}
+  X.pts=pts;X.channels=p.channels;X.chMax=p.chMax;Object.assign(X,stats(p.pts));
+  fillSel(document.getElementById("chx"),X);document.getElementById("empty").style.display="none";fitView();ready();render();}
+function loadVis(t){const p=parseCSV(t);if(!p)return;V=emptyLayer();V.pts=p.pts;V.channels=p.channels;V.chMax=p.chMax;Object.assign(V,stats(p.pts));
+  fillSel(document.getElementById("chv"),V);groups={};groupSeq=0;active=null;
+  xf.sInit=X?X.extent/V.extent:1;xf.mul=1;xf.thetaDeg=0;xf.tx=0;xf.ty=0;xf.flipX=1;xf.flipY=1;
+  syncControls();statusLine();document.getElementById("empty").style.display=X?"none":"grid";ready();render();}
+function ready(){const ok=X&&V;document.getElementById("dlcoords").disabled=!ok;document.getElementById("dlxform").disabled=!ok;document.getElementById("sendkernel").disabled=!ok;}
+
+function fitView(){const L=X||V;if(!L||!L.pts.length)return;const r=stage.getBoundingClientRect(),pad=40;
+  const xs=L.pts.map(p=>p.x),ys=L.pts.map(p=>p.y),mnx=Math.min(...xs),mxx=Math.max(...xs),mny=Math.min(...ys),mxy=Math.max(...ys);
+  view.k=Math.min((r.width-2*pad)/((mxx-mnx)||1),(r.height-2*pad)/((mxy-mny)||1));
+  view.ox=pad-mnx*view.k+(r.width-2*pad-(mxx-mnx)*view.k)/2;
+  view.oy=pad+mxy*view.k+(r.height-2*pad-(mxy-mny)*view.k)/2;}
+function sx(x){return x*view.k+view.ox;} function sy(y){return -y*view.k+view.oy;}
+
+function gT(p){ // global-only aligned position
+  let qx=p.x-V.centroid[0],qy=p.y-V.centroid[1];qx*=xf.flipX;qy*=xf.flipY;
+  const t=xf.thetaDeg*Math.PI/180,c=Math.cos(t),s=Math.sin(t);let rx=qx*c-qy*s,ry=qx*s+qy*c;
+  const sc=xf.sInit*xf.mul;return [rx*sc+X.centroid[0]+xf.tx, ry*sc+X.centroid[1]+xf.ty];}
+function aligned(p){const g=gT(p);const E=p.grp&&groups[p.grp];if(!E)return g;
+  let qx=(g[0]-E.cx)*(E.fx||1),qy=(g[1]-E.cy)*(E.fy||1);const t=E.thetaDeg*Math.PI/180,c=Math.cos(t),s=Math.sin(t);
+  let rx=(qx*c-qy*s)*E.mul, ry=(qx*s+qy*c)*E.mul;return [rx+E.cx+E.tx, ry+E.cy+E.ty];}
+
+function target(){return (active&&groups[active])?groups[active]:xf;}
+function isAbs(){return target()===xf;}
+
+function drawLayer(layer,project,color,baseR,ringActive){
+  const t0=layer.ch&&layer.ch!=="__u",max=t0?(layer.chMax[layer.ch]||1):1;
+  for(const p of layer.pts){const[dx,dy]=project(p);const t=t0?Math.min(1,(p.vals[layer.ch]||0)/max):1;if(t<=0)continue;
+    ctx.globalAlpha=t*layer.opacity;ctx.fillStyle=color;ctx.beginPath();ctx.arc(sx(dx),sy(dy),baseR,0,6.2832);ctx.fill();
+    if(ringActive&&p.grp===active&&active){ctx.globalAlpha=0.9;ctx.strokeStyle="#ffffff";ctx.lineWidth=1;ctx.beginPath();ctx.arc(sx(dx),sy(dy),baseR+1.3,0,6.2832);ctx.stroke();}}
+}
+function render(){const r=stage.getBoundingClientRect();
+  ctx.globalCompositeOperation="source-over";ctx.globalAlpha=1;ctx.fillStyle="#000";ctx.fillRect(0,0,r.width,r.height);
+  ctx.globalCompositeOperation="lighter";
+  const rX=Math.max(1,Math.min(3,view.k*0.7)), rV=Math.max(1.6,Math.min(5,view.k*1.1));
+  if(X)drawLayer(X,p=>[p.x,p.y],"#22d3d3",rX,false);
+  if(V)drawLayer(V,aligned,"#e879e8",rV,true);
+  ctx.globalCompositeOperation="source-over";ctx.globalAlpha=1;
+  if(path.length){ctx.strokeStyle="#66c2a5";ctx.lineWidth=1.6;ctx.beginPath();ctx.moveTo(path[0][0],path[0][1]);for(const q of path.slice(1))ctx.lineTo(q[0],q[1]);ctx.closePath();ctx.stroke();}
+  const f=`${xf.flipX>0?"+":"\u2212"},${xf.flipY>0?"+":"\u2212"}`;
+  document.getElementById("foot").innerHTML=`&nbsp;&middot;&nbsp; <b>global</b> rot ${xf.thetaDeg.toFixed(1)}\u00b0 &middot; scale ${(xf.sInit*xf.mul).toFixed(3)} &middot; flip ${f} &middot; fragments ${Object.keys(groups).length}`;
+}
+function statusLine(){const s=document.getElementById("status");
+  if(active&&groups[active]){const E=groups[active],n=V.pts.filter(p=>p.grp===active).length;const ff=`${E.fx>0?"+":"\u2212"},${E.fy>0?"+":"\u2212"}`;s.textContent=`editing: fragment ${active} \u00b7 ${n} spots \u00b7 flip ${ff} (rot/scale/flip/move act on it only)`;}
+  else s.textContent="editing: whole slide";}
+function syncControls(){const T=target();
+  document.getElementById("rot").value=T.thetaDeg;document.getElementById("rotv").textContent=T.thetaDeg.toFixed(1)+"\u00b0";
+  document.getElementById("sc").value=T.mul;
+  document.getElementById("scv").textContent=isAbs()?(xf.sInit*xf.mul).toFixed(2)+"\u00d7":T.mul.toFixed(2)+"\u00d7 rel";}
+
+function inPoly(px,py,poly){let ins=false;for(let i=0,j=poly.length-1;i<poly.length;j=i++){const xi=poly[i][0],yi=poly[i][1],xj=poly[j][0],yj=poly[j][1];if(((yi>py)!==(yj>py))&&(px<(xj-xi)*(py-yi)/(yj-yi)+xi))ins=!ins;}return ins;}
+function makeFragment(poly){
+  const hits=[];for(let i=0;i<V.pts.length;i++){const[ax,ay]=aligned(V.pts[i]);if(inPoly(sx(ax),sy(ay),poly))hits.push(i);}
+  if(!hits.length)return;
+  const id=++groupSeq;let cx=0,cy=0;for(const i of hits){const g=gT(V.pts[i]);cx+=g[0];cy+=g[1];}cx/=hits.length;cy/=hits.length;
+  groups[id]={tx:0,ty:0,thetaDeg:0,mul:1,fx:1,fy:1,cx,cy};hits.forEach(i=>V.pts[i].grp=id);active=id;
+  setMode("move");syncControls();statusLine();render();
+}
+
+function pos(e){const r=cv.getBoundingClientRect();return[e.clientX-r.left,e.clientY-r.top];}
+function setMode(m){mode=m;path=[];stage.classList.toggle("pan",m==="pan");stage.classList.toggle("lasso",m==="lasso");
+  document.querySelectorAll("#modes button").forEach(b=>b.classList.toggle("on",b.dataset.mode===m));}
+cv.addEventListener("mousedown",e=>{if(!X&&!V)return;const p=pos(e);
+  if(mode==="pan"){panning=true;dragStart=p;return;}
+  if(mode==="lasso"){dragging=true;path=[p];return;}
+  if(mode==="move"&&V){dragging=true;dragStart=p;}});
+cv.addEventListener("mousemove",e=>{if(!dragging&&!panning)return;const p=pos(e);
+  if(panning){view.ox+=p[0]-dragStart[0];view.oy+=p[1]-dragStart[1];dragStart=p;render();return;}
+  if(mode==="lasso"){path.push(p);render();return;}
+  if(mode==="move"){const T=target();T.tx+=(p[0]-dragStart[0])/view.k;T.ty-=(p[1]-dragStart[1])/view.k;dragStart=p;render();}});
+window.addEventListener("mouseup",()=>{if(dragging&&mode==="lasso"&&path.length>2){makeFragment(path);}path=[];dragging=false;panning=false;});
+cv.addEventListener("wheel",e=>{if(!X&&!V)return;e.preventDefault();const p=pos(e),f=e.deltaY<0?1.12:1/1.12;view.ox=p[0]-(p[0]-view.ox)*f;view.oy=p[1]-(p[1]-view.oy)*f;view.k*=f;render();},{passive:false});
+window.addEventListener("keydown",e=>{
+  if(e.key==="Escape"){active=null;syncControls();statusLine();render();return;}
+  if(mode!=="move"||!V)return;const T=target(),step=6/view.k;
+  if(e.key==="ArrowUp")T.ty+=step;else if(e.key==="ArrowDown")T.ty-=step;else if(e.key==="ArrowLeft")T.tx-=step;else if(e.key==="ArrowRight")T.tx+=step;else return;
+  e.preventDefault();render();});
+
+document.getElementById("modes").addEventListener("click",e=>{const b=e.target.closest("button");if(b)setMode(b.dataset.mode);});
+document.getElementById("fx").addEventListener("change",e=>{const f=e.target.files[0];if(!f)return;const r=new FileReader();r.onload=()=>loadXen(r.result);r.readAsText(f);});
+document.getElementById("fv").addEventListener("change",e=>{const f=e.target.files[0];if(!f)return;const r=new FileReader();r.onload=()=>loadVis(r.result);r.readAsText(f);});
+document.getElementById("chx").addEventListener("change",e=>{if(X){X.ch=e.target.value;render();}});
+document.getElementById("chv").addEventListener("change",e=>{if(V){V.ch=e.target.value;render();}});
+document.getElementById("opx").addEventListener("input",e=>{if(X){X.opacity=e.target.value/100;render();}});
+document.getElementById("opv").addEventListener("input",e=>{if(V){V.opacity=e.target.value/100;render();}});
+document.getElementById("flipx").addEventListener("click",()=>{if(active&&groups[active])groups[active].fx*=-1;else xf.flipX*=-1;statusLine();render();});
+document.getElementById("flipy").addEventListener("click",()=>{if(active&&groups[active])groups[active].fy*=-1;else xf.flipY*=-1;statusLine();render();});
+document.getElementById("rot").addEventListener("input",e=>{target().thetaDeg=+e.target.value;syncControls();render();});
+document.getElementById("sc").addEventListener("input",e=>{target().mul=+e.target.value;syncControls();render();});
+document.getElementById("rotm").addEventListener("click",()=>{const T=target();T.thetaDeg=Math.max(-180,T.thetaDeg-0.5);syncControls();render();});
+document.getElementById("rotp").addEventListener("click",()=>{const T=target();T.thetaDeg=Math.min(180,T.thetaDeg+0.5);syncControls();render();});
+document.getElementById("scm").addEventListener("click",()=>{const T=target();T.mul=Math.max(0.2,T.mul/1.01);syncControls();render();});
+document.getElementById("scp").addEventListener("click",()=>{const T=target();T.mul=Math.min(4,T.mul*1.01);syncControls();render();});
+document.getElementById("whole").addEventListener("click",()=>{active=null;syncControls();statusLine();render();});
+document.getElementById("fit").addEventListener("click",()=>{fitView();render();});
+document.getElementById("reset").addEventListener("click",()=>{groups={};groupSeq=0;active=null;if(V)V.pts.forEach(p=>p.grp=0);
+  xf.mul=1;xf.thetaDeg=0;xf.tx=0;xf.ty=0;xf.flipX=1;xf.flipY=1;syncControls();statusLine();render();});
+
+// ── shared transform builder (used by download AND send-to-kernel) ──
+function buildTransform(){
+  if(!X||!V)return null;
+  const frags=Object.entries(groups).map(([id,E])=>({id:+id,flipX:E.fx,flipY:E.fy,tx:E.tx,ty:E.ty,rotation_deg:E.thetaDeg,scale:E.mul,pivot:[E.cx,E.cy],
+    barcodes:V.pts.filter(p=>p.grp==id).map(p=>p.barcode)}));
+  return {global:{flipX:xf.flipX,flipY:xf.flipY,rotation_deg:xf.thetaDeg,scale:xf.sInit*xf.mul,tx:xf.tx,ty:xf.ty,visium_centroid:V.centroid,xenium_centroid:X.centroid},
+    fragments:frags,
+    formula:"g = global.scale*R(global.rot)*[flipX,flipY]*(p - visium_centroid) + xenium_centroid + [tx,ty]; then per fragment: out = scale*R(rot)*[flipX,flipY]*(g - pivot) + pivot + [tx,ty]"};}
+
+document.getElementById("dlcoords").addEventListener("click",()=>{if(!X||!V)return;
+  const lines=["barcode,x,y,fragment"];for(const p of V.pts){const[ax,ay]=aligned(p);lines.push(`${p.barcode},${ax.toFixed(2)},${ay.toFixed(2)},${p.grp}`);}
+  const b=new Blob([lines.join("\n")],{type:"text/csv"});const a=document.createElement("a");a.href=URL.createObjectURL(b);a.download="visium_aligned.csv";a.click();});
+document.getElementById("dlxform").addEventListener("click",()=>{const obj=buildTransform();if(!obj)return;
+  const b=new Blob([JSON.stringify(obj,null,2)],{type:"application/json"});const a=document.createElement("a");a.href=URL.createObjectURL(b);a.download="visium_transform.json";a.click();});
+
+// ── Return the transform: POST to the serving kernel, download as fallback ──
+function markSent(msg){
+  const b=document.getElementById("sendkernel");
+  b.textContent=msg;b.classList.remove("primary");b.classList.add("sent");
+  setTimeout(()=>{b.textContent="\u2713 Send transform to notebook";b.classList.add("primary");b.classList.remove("sent");},2800);
+}
+function downloadTransform(obj){
+  const b=new Blob([JSON.stringify(obj,null,2)],{type:"application/json"});
+  const a=document.createElement("a");a.href=URL.createObjectURL(b);a.download="visium_transform.json";a.click();
+}
+function sendTransform(){
+  const obj=buildTransform();if(!obj)return;
+  fetch("transform",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(obj)})
+    .then(r=>{if(!r.ok)throw new Error(r.status);markSent("\u2713 Sent \u2014 return to the notebook");})
+    .catch(()=>{downloadTransform(obj);markSent("\u2913 Downloaded \u2014 upload it back");});
+}
+document.getElementById("sendkernel").addEventListener("click",sendTransform);
+
+// ── Load data: from the serving kernel if present, else baked into the file ──
+fetch("data.json").then(r=>r.ok?r.json():Promise.reject()).then(d=>{
+  if(d.xenium_csv) loadXen(d.xenium_csv);
+  if(d.visium_csv) loadVis(d.visium_csv);
+}).catch(()=>{ /* no server: data is embedded below (save_aligner) or loaded by hand */ });
+/*__SPATIALIGN_EMBED__*/
+
+resize();
+</script>
+
+
+<!-- ================================================================
+     BAKED TRAJECTORY PLAYBACK
+     Plays pre-computed FGW frames baked into the HTML by save_aligner(trajectory=hist).
+     Works with no server proxy — pure offline animation.
+     ================================================================ -->
+<script>
+function playBakedTrajectory(traj) {
+  if (!traj || !traj.frames || !traj.frames.length) return;
+  var frames = traj.frames;
+  var n = frames.length;
+  var btn = document.getElementById('btnAutoAlign');
+  var bar = document.getElementById('autoAlignBar');
+  var fill = document.getElementById('aaProgressFill');
+  var label = document.getElementById('aaLabel');
+  var statusEl = document.getElementById('aaStatus');
+
+  // Snapshot original Xenium coords for restore
+  var _origCoords = null;
+  if (window.X && window.X.pts) {
+    _origCoords = window.X.pts.map(function(p){ return {x:p.x, y:p.y}; });
+  }
+
+  if (btn) {
+    btn.disabled = true;
+    btn.innerHTML = '&#9654; Auto-Align (baked)';
+    btn.style.background = '#1a3a5a';
+  }
+  if (bar) { bar.className = 'visible'; }
+  if (fill) { fill.style.width = '0%'; fill.style.background = 'var(--accent)'; }
+  if (label) { label.textContent = 'playing baked alignment…'; }
+
+  function applyFrame(coords) {
+    if (!window.X || !window.X.pts) return;
+    var pts = window.X.pts;
+    var ns = coords.length, nb = pts.length;
+    if (ns === nb) {
+      for (var i = 0; i < nb; i++) { pts[i].x = coords[i][0]; pts[i].y = coords[i][1]; }
+    } else {
+      var step = nb / ns;
+      for (var j = 0; j < ns; j++) {
+        var idx = Math.round(j * step);
+        if (idx < nb) { pts[idx].x = coords[j][0]; pts[idx].y = coords[j][1]; }
+      }
+    }
+    if (window.render) window.render();
+  }
+
+  var i = 0;
+  var delay = Math.max(80, Math.min(400, 3000 / n)); // ~3s total
+
+  function step() {
+    if (i >= n) {
+      // Done
+      if (fill) { fill.style.width = '100%'; fill.style.background = '#2ecc71'; }
+      if (label) { label.textContent = n + ' iters done (baked)'; }
+      if (statusEl) {
+        statusEl.className = 'ok';
+        statusEl.textContent = '\u2713 Auto-aligned \u2014 drag Visium to refine, then Send';
+      }
+      if (btn) {
+        btn.disabled = false;
+        btn.innerHTML = '&#9654; Re-run Auto-Align';
+      }
+      // Add restore button
+      var rb = document.getElementById('aaRestore');
+      if (rb && _origCoords) {
+        rb.style.display = 'inline-block';
+        rb.onclick = function() {
+          if (!_origCoords || !window.X) return;
+          for (var k=0; k<_origCoords.length && k<window.X.pts.length; k++) {
+            window.X.pts[k].x = _origCoords[k].x;
+            window.X.pts[k].y = _origCoords[k].y;
+          }
+          if (window.render) window.render();
+          rb.style.display = 'none';
+          if (statusEl) { statusEl.textContent = 'Xenium restored.'; statusEl.className = ''; }
+        };
+      }
+      return;
+    }
+    applyFrame(frames[i]);
+    var pct = Math.round((i + 1) / n * 100);
+    if (fill) fill.style.width = pct + '%';
+    if (label) label.textContent = 'iter ' + (i+1) + '/' + n;
+    i++;
+    setTimeout(step, delay);
+  }
+  setTimeout(step, delay);
+}
+</script>
+
+<!-- ================================================================
+     AUTO-ALIGN: SSE client + progress bar + live animation
+     Runs FGW alignment server-side, streams each iteration frame,
+     animates Xenium cells sliding into aligned position.
+     ================================================================ -->
+<script>
+(function(){
+  var btn        = document.getElementById('btnAutoAlign');
+  var bar        = document.getElementById('autoAlignBar');
+  var fill       = document.getElementById('aaProgressFill');
+  var label      = document.getElementById('aaLabel');
+  var statusEl   = document.getElementById('aaStatus');
+  var restoreBtn = document.getElementById('aaRestore');
+
+  var _origXenCoords = null;  // {x,y}[] snapshot before alignment
+  var _alignRunning  = false;
+  var _evtSrc        = null;
+
+  // --- Snapshot / restore Xenium coords ---
+  function _snapshotXen(){
+    if(!window.X || !window.X.pts) return;
+    _origXenCoords = window.X.pts.map(function(p){ return {x:p.x, y:p.y}; });
+  }
+  function _restoreXen(){
+    if(!_origXenCoords || !window.X) return;
+    for(var i=0;i<_origXenCoords.length&&i<window.X.pts.length;i++){
+      window.X.pts[i].x = _origXenCoords[i].x;
+      window.X.pts[i].y = _origXenCoords[i].y;
+    }
+    if(window.render) window.render();
+  }
+
+  // --- Apply one SSE frame of moving coords to X.pts ---
+  // coords_moving is server-subsampled (up to 2000 pts).
+  // X.pts may have up to XEN_CAP (60000) pts from the browser CSV.
+  // Strategy: use nearest-neighbour in original coord space to interpolate
+  // displacements to all browser points. Build index lazily on first call.
+  var _nnIndex = null;  // {origX[], origY[], serverIdx[]} built from orig coords
+
+  function _buildNNIndex(serverOrigCoords){
+    // serverOrigCoords: [[x,y], ...] — the ORIGINAL (pre-alignment) server-side coords
+    // for the subsampled points. We need these to map server displacement -> browser pts.
+    // Since we don't have them directly, use a stride-based approximation instead.
+    _nnIndex = null;  // fallback: stride-based
+  }
+
+  function _applyFrame(coords_moving){
+    if(!window.X || !window.X.pts || !_origXenCoords) return;
+    var pts = window.X.pts;
+    var n_server = coords_moving.length;
+    var n_browser = pts.length;
+
+    if(n_server === n_browser){
+      // Exact match (rare but handle it)
+      for(var i=0;i<n_browser;i++){
+        pts[i].x = coords_moving[i][0];
+        pts[i].y = coords_moving[i][1];
+      }
+    } else {
+      // Interpolate: for each server point j (at stride j*n_browser/n_server),
+      // compute displacement and apply it to that browser point.
+      // Points in between are left at their current position (smooth visual).
+      var step = n_browser / n_server;
+      for(var j=0;j<n_server;j++){
+        var idx = Math.round(j * step);
+        if(idx >= n_browser) continue;
+        var ox = _origXenCoords[idx] ? _origXenCoords[idx].x : pts[idx].x;
+        var oy = _origXenCoords[idx] ? _origXenCoords[idx].y : pts[idx].y;
+        // Displacement from server's j-th original point to its new position
+        // We approximate: server point j ~ browser point idx (stride mapping)
+        pts[idx].x = coords_moving[j][0];
+        pts[idx].y = coords_moving[j][1];
+      }
+    }
+    if(window.render) window.render();
+  }
+
+  // --- Infer base URL for SSE + POST endpoints ---
+  function _baseUrl(){
+    // If running under jupyter-server-proxy on OOD, the page is served at
+    //   https://ood.ccv.brown.edu/.../proxy/PORT/
+    // Both /run_align and /align_events are at that same base.
+    var loc = window.location;
+    var path = loc.pathname;
+    // Ensure base ends with /
+    var base = loc.origin + path.replace(/\/[^/]*$/, '') + '/';
+    return base;
+  }
+
+  // --- Error handler ---
+  function _onError(msg){
+    if(_evtSrc){ _evtSrc.close(); _evtSrc=null; }
+    _alignRunning = false;
+    btn.disabled = false;
+    btn.style.background = '#4a1a1a';
+    btn.style.borderColor = '#ff4444';
+    btn.innerHTML = '&#9654; Run Auto-Align';
+    label.textContent = 'failed';
+    statusEl.className = 'err';
+    statusEl.textContent = '\u2717 ' + msg;
+    console.error('spatialign auto-align:', msg);
+  }
+
+  // --- Main button click ---
+  btn.addEventListener('click', function(){
+    if(_alignRunning) return;
+    if(!window.X || !window.V){
+      _onError('Load Xenium and Visium data first.');
+      return;
+    }
+
+    _snapshotXen();
+    _alignRunning = true;
+    btn.disabled = true;
+    btn.style.background = '#333';
+    btn.style.borderColor = '#555';
+    btn.innerHTML = '&#8635; Aligning…';
+    bar.className = 'visible';
+    fill.style.width = '0%';
+    fill.style.background = 'var(--accent)';
+    label.textContent = 'connecting…';
+    statusEl.className = '';
+    statusEl.textContent = '';
+    restoreBtn.style.display = 'none';
+
+    var base = _baseUrl();
+    var evtUrl   = base + 'align_events';
+    var startUrl = base + 'run_align';
+
+    if(_evtSrc){ _evtSrc.close(); _evtSrc=null; }
+    _evtSrc = new EventSource(evtUrl);
+
+    _evtSrc.onmessage = function(e){
+      try{
+        var msg = JSON.parse(e.data);
+        if(msg.error){ _onError(msg.error); return; }
+
+        if(!msg.done){
+          var pct = Math.round(msg.iter / msg.total * 100);
+          fill.style.width = pct + '%';
+          label.textContent = 'iter ' + msg.iter + '/' + msg.total +
+                              ' \u00b7 disp=' + String(msg.mean_disp||0).slice(0,6);
+          if(msg.coords_moving) _applyFrame(msg.coords_moving);
+        } else {
+          // Done
+          _evtSrc.close(); _evtSrc=null;
+          _alignRunning = false;
+
+          fill.style.width = '100%';
+          fill.style.background = '#2ecc71';
+          label.textContent = (msg.n_iters||'?') + ' iters done';
+          statusEl.className = 'ok';
+          statusEl.textContent = '\u2713 Auto-aligned (disp=' +
+                                  String(msg.final_mean_disp||'?').slice(0,6) +
+                                  ') \u2014 drag Visium to refine, then Send';
+
+          btn.disabled = false;
+          btn.style.background = '#1a3a5a';
+          btn.style.borderColor = '#4488cc';
+          btn.innerHTML = '&#9654; Re-run Auto-Align';
+          restoreBtn.style.display = 'inline-block';
+
+          if(msg.coords_moving) _applyFrame(msg.coords_moving);
+        }
+      } catch(ex){
+        console.error('spatialign SSE parse error', ex, e.data);
+      }
+    };
+
+    _evtSrc.onerror = function(){
+      _onError('Lost connection to kernel. Is the server still running? ' +
+               'Make sure jupyter-server-proxy is installed and you opened ' +
+               'this tool via launch_aligner().');
+    };
+
+    // Trigger the alignment
+    fetch(startUrl, {
+      method:'POST',
+      headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({n_iter:12}),
+    }).then(function(r){
+      if(!r.ok) r.json().then(function(j){
+        _onError(j.error||'Server error '+r.status);
+      }).catch(function(){ _onError('Server error '+r.status); });
+      else label.textContent = 'running FGW…';
+    }).catch(function(err){
+      _onError('Cannot reach kernel server: ' + err.message +
+               '. Use launch_aligner() (not save_aligner()) for auto-align.');
+    });
+  });
+
+  // Restore button
+  restoreBtn.addEventListener('click', function(){
+    _restoreXen();
+    restoreBtn.style.display='none';
+    statusEl.textContent = 'Xenium restored to original position.';
+    statusEl.className='';
+  });
+
+})();
+</script>
+</body>
+</html>
