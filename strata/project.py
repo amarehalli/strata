@@ -38,7 +38,7 @@ from typing import Callable, Optional
 import numpy as np
 import pandas as pd
 
-from .canonical import PointSet
+from .io.loaders import PointSet
 from .select import propose_selection
 from .align import auto_align
 from .transform import compose, apply_aligner_transform
