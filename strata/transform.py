@@ -65,3 +65,33 @@ def compose(coords: np.ndarray,
     for t in transforms:
         out = t.apply(out)
     return out
+
+
+def apply_aligner_transform(coords, ids, transform_dict):
+    """Apply a transform JSON (exported by the browser aligner) to Visium coordinates."""
+    import numpy as np
+    g = transform_dict.get("global", transform_dict)
+    flip  = np.array([g.get("flipX", 1), g.get("flipY", 1)], dtype=float)
+    scale = float(g.get("scale", 1.0))
+    theta = float(g.get("rotation_deg", 0.0)) * np.pi / 180.0
+    tx    = float(g.get("tx", 0.0))
+    ty    = float(g.get("ty", 0.0))
+    vc    = np.array(g.get("visium_centroid",  [0.0, 0.0]))
+    xc    = np.array(g.get("xenium_centroid",  [0.0, 0.0]))
+    c, s  = np.cos(theta), np.sin(theta)
+    R     = np.array([[c, -s], [s, c]])
+    coords = np.asarray(coords, dtype=float)
+    out    = ((coords - vc) * flip) @ R.T * scale + xc + np.array([tx, ty])
+    for frag in g.get("fragments", []):
+        barcodes = set(frag.get("barcodes", []))
+        mask     = np.array([i in barcodes for i in ids])
+        if not mask.any(): continue
+        pivot = np.array(frag.get("pivot", [0.0, 0.0]))
+        ff    = np.array([frag.get("flipX", 1), frag.get("flipY", 1)], dtype=float)
+        fs    = float(frag.get("scale", 1.0))
+        ft    = float(frag.get("rotation_deg", 0.0)) * np.pi / 180.0
+        ftx, fty = float(frag.get("tx", 0.0)), float(frag.get("ty", 0.0))
+        fc, fs2  = np.cos(ft), np.sin(ft)
+        FR    = np.array([[fc, -fs2], [fs2, fc]])
+        out[mask] = ((out[mask] - pivot) * ff) @ FR.T * fs + pivot + np.array([ftx, fty])
+    return out
