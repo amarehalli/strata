@@ -41,7 +41,7 @@ import pandas as pd
 from .io.loaders import PointSet
 from .select import propose_selection
 from .align import auto_align
-from .transform import compose, apply_aligner_transform
+from .transform import compose
 
 
 class Project:
