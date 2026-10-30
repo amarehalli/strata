@@ -71,12 +71,17 @@ def _detect_sample_type(xen_chunks: list[dict],
     area is large relative to the total Visium bounding-box area.
     This is data-driven: no sample names or counts are hardcoded.
     """
-    # Bounding-box areas
+    # Compare Xenium area to the LARGEST single Visium chunk
+    # (not total Visium bbox, which may span multiple unrelated sections)
     def _bbox_area(c):
         return (c[:, 0].ptp() + 1) * (c[:, 1].ptp() + 1)
 
     xen_area = _bbox_area(xen_coords)
-    vis_area  = _bbox_area(vis_coords)
+    if vis_chunks:
+        largest_vis = max(vis_chunks, key=lambda c: c["bbox_area"])
+        vis_area = largest_vis["bbox_area"]
+    else:
+        vis_area = _bbox_area(vis_coords)
     coverage  = xen_area / (vis_area + 1e-6)
 
     n_xen = len(xen_chunks)
@@ -103,7 +108,7 @@ def find_matching_chunks(
     vis: PointSet,
     coverage_threshold: float = 0.4,
     min_vis_spots: int = 20,
-    merge_distance_factor: float = 1.5,
+    merge_distance_factor: float = 3.0,
     verbose: bool = True,
 ) -> tuple[PointSet, list[int], str]:
     """Select the Visium spots corresponding to the Xenium data.
